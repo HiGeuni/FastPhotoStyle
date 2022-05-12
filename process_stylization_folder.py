@@ -79,6 +79,7 @@ NUM_CLASS=150
 PADDING_CONSTANT = 32
 SEQM_DOWNSAMPLING_RATE = 4
 GPU_ID = 0
+LABEL_PROP_MAX = 0.3
 
 model = VGG19(weights='imagenet')
 model = Model(inputs = model.input, outputs=model.get_layer('block5_pool').output)
@@ -187,18 +188,57 @@ def getEquation(content_image, target):
         mole = 0
         ##########################
         # eq 1-1 : 기존 equation #
-        #########################
-        for idx in contentDc.keys():
-            d = target.loc[t, str(idx)]
-            if float(contentDc[idx]) == 0.0:
-                deno += float(d)
-            elif float(d) == 0.0:
-                deno += float(contentDc[idx])
-            else:
-                deno += max(float(contentDc[idx]), float(d))
-                mole += min(float(contentDc[idx]), float(d))
-        eq1 = float(mole/deno)
+        ##########################
+        #for idx in contentDc.keys():
+        #    d = target.loc[t, str(idx)]
+        #    if float(contentDc[idx]) == 0.0:
+        #        deno += float(d)
+        #    elif float(d) == 0.0::q
+        #        deno += float(contentDc[idx])
+        #    else:
+        #        deno += max(float(contentDc[idx]), float(d))
+        #        mole += min(float(contentDc[idx]), float(d))
+        #eq1 = float(mole/deno)
         
+        #####################################
+        # eq 1-2 : 교수님께서 말씀하신 내용 #
+        #####################################
+        #for idx in contentDc.keys():
+        #    contentLabel = float(contentDc[idx])
+        #    styleLabel = float(target.loc[t, str(idx)])
+        #    if contentLabel == 0.0:
+        #        continue
+        #    else:
+        #        deno += max(contentLabel, styleLabel)
+        #        mole += min(contentLabel, styleLabel)
+        #
+        #eq1 = float(mole/deno)
+
+        #####################################################
+        # eq 1-3 : 교수님께서 말씀하신 내용 +  maximum prop #
+        #####################################################
+        for idx in contentDc.keys():
+            contentLabel = min(float(contentDc[idx]), LABEL_PROP_MAX)
+            styleLabel = min(float(target.loc[t, str(idx)]), LABEL_PROP_MAX)
+            if contentLabel == 0.0:
+                 continue
+            else:
+                deno += max(contentLabel, styleLabel)
+                mole += min(contentLabel, styleLabel)
+        
+        eq1 = float(mole/deno)
+         
+        #####################################################
+        # eq 1-4 : 생각을 해보니까...                       #
+        #####################################################
+        #tmp = 0
+        #for idx in contentDc.keys():
+        #    contentLabel = float(contentDc[idx])
+        #    styleLabel = float(target.loc[t, str(idx)])
+        #    if contentLabel != 0.0 and styleLabel != 0.0:
+        #        tmp += (styleLabel/contentLabel)
+        #eq1_list.append(tmp)
+        eq1_list.append(eq1)
         content = cv2.imread(content_image)
         style = cv2.imread(target.loc[t, 'file_name'])
         if content.shape[0]*content.shape[1] > style.shape[0] * style.shape[1]:
@@ -206,7 +246,6 @@ def getEquation(content_image, target):
         else:
             content = cv2.resize(content, dsize = (style.shape[1], style.shape[0]), interpolation=cv2.INTER_CUBIC)
         
-        eq1_list.append(eq1)        
         
         ########################
         # eq 2 : inner product #

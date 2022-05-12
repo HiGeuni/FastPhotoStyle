@@ -63,7 +63,6 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
     with torch.no_grad():
         cont_img = Image.open(content_image_path).convert('RGB')
         styl_img = Image.open(style_image_path).convert('RGB')
-
         new_cw, new_ch = memory_limit_image_resize(cont_img)
         new_sw, new_sh = memory_limit_image_resize(styl_img)
         cont_pilimg = cont_img.copy()
@@ -74,29 +73,24 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
             styl_seg = Image.open(style_seg_path)
             cont_seg.resize((new_cw,new_ch),Image.NEAREST)
             styl_seg.resize((new_sw,new_sh),Image.NEAREST)
-
         except:
             cont_seg = []
             styl_seg = []
-
         cont_img = transforms.ToTensor()(cont_img).unsqueeze(0)
         styl_img = transforms.ToTensor()(styl_img).unsqueeze(0)
-
         if cuda:
             cont_img = cont_img.cuda(0)
             styl_img = styl_img.cuda(0)
             stylization_module.cuda(0)
-
         # cont_img = Variable(cont_img, volatile=True)
         # styl_img = Variable(styl_img, volatile=True)
-
         cont_seg = np.asarray(cont_seg)
         styl_seg = np.asarray(styl_seg)
+        print(cont_seg.shape, styl_seg.shape)
         if cont_seg_remapping is not None:
             cont_seg = cont_seg_remapping.process(cont_seg)
         if styl_seg_remapping is not None:
             styl_seg = styl_seg_remapping.process(styl_seg)
-
         if save_intermediate:
             with Timer("Elapsed time in stylization: %f"):
                 stylized_img = stylization_module.transform(cont_img, styl_img, cont_seg, styl_seg)
@@ -126,7 +120,6 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
             grid = utils.make_grid(stylized_img.data, nrow=1, padding=0)
             ndarr = grid.mul(255).clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy()
             out_img = Image.fromarray(ndarr)
-
             with Timer("Elapsed time in propagation: %f"):
                 out_img = smoothing_module.process(out_img, cont_pilimg)
 

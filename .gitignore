@@ -7,6 +7,9 @@ data/
 logs/
 examples
 .idea/
+lib/
+components/
+weights/
 notebooks/.ipynb_checkpoints/*
 *.tar.gz
 *.zip
@@ -16,3 +19,6 @@ notebooks/.ipynb_checkpoints/*
 # Add the images explicitly
 *.jpg
 *.png
+*.json
+*.csv
+

@@ -51,13 +51,13 @@ class SegReMapping:
         for label in np.unique(cont_seg):
             cont_label_info.append(label)
             new_cont_label_info.append(label)
-
+        cont_label_info_before = cont_label_info
         style_label_info = []
         new_style_label_info = []
         for label in np.unique(styl_seg):
             style_label_info.append(label)
             new_style_label_info.append(label)
-
+        style_label_info_before = style_label_info
         cont_set_diff = set(cont_label_info) - set(style_label_info)
         # Find the labels that are not covered by the style
         # Assign them to the best matched region in the style region
@@ -68,6 +68,7 @@ class SegReMapping:
                 if new_label in style_label_info:
                     new_cont_label_info[cont_label_index] = new_label
                     break
+        print("Content Label", cont_label_info_before, "->", new_cont_label_info)
         new_cont_seg = cont_seg.copy()
         for i,current_label in enumerate(cont_label_info):
             new_cont_seg[(cont_seg == current_label)] = new_cont_label_info[i]
@@ -88,7 +89,8 @@ class SegReMapping:
         for i,current_label in enumerate(style_label_info):
             # print("%d -> %d" %(current_label,new_style_label_info[i]))
             new_styl_seg[(styl_seg == current_label)] = new_style_label_info[i]
-
+        
+        print("Style label", style_label_info_before, "->", new_style_label_info)
         return new_cont_seg, new_styl_seg
 
     def self_remapping(self, seg):
@@ -208,6 +210,7 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
             if no_post is False:
                 with Timer("Elapsed time in post processing: %f"):
                     out_img = smooth_filter(out_img, cont_pilimg, f_radius=15, f_edge=1e-1)
+            out_img.convert('P')
             out_img.save(output_image_path)
     return
 

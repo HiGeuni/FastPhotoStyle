@@ -2,6 +2,8 @@ import cv2
 import glob
 import argparse
 
+RESTRICT =960 
+
 def resizeImage(imagePath):
 	
 	img = cv2.imread(imagePath)
@@ -9,7 +11,7 @@ def resizeImage(imagePath):
 	#if img.shape[0] <= 960 and img.shape[1] <= 960:
 	#	return
 	
-	standard = min(960/img.shape[0], 960/img.shape[1])
+	standard = min(RESTRICT/img.shape[0], RESTRICT/img.shape[1])
 	resizedImage = cv2.resize(img, dsize=(0,0), fx = standard, fy = standard, interpolation=cv2.INTER_CUBIC)
 	cv2.imwrite(imagePath, resizedImage)
 

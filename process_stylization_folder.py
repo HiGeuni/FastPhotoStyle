@@ -4,9 +4,12 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 from __future__ import print_function
 import argparse
+from mimetypes import read_mime_types
 import os
+from ossaudiodev import control_names
 import torch
 from torch import nn
+import time
 import os
 import tensorflow as tf
 from tensorflow import keras
@@ -79,13 +82,16 @@ NUM_CLASS=150
 PADDING_CONSTANT = 32
 SEQM_DOWNSAMPLING_RATE = 4
 GPU_ID = 0
-LABEL_PROP_MAX = 0.3
+LABEL_PROP_MAX = 0.1
+NUMBER_OF_RES_IMAGE = 5 
 
 model = VGG19(weights='imagenet')
 model = Model(inputs = model.input, outputs=model.get_layer('block5_pool').output)
         
 segReMapping = process_stylization_ade20k_ssn.SegReMapping('ade20k_semantic_rel.npy')
 
+WEIGHTS_ENCODER = os.path.join(SEG_NET_PATH, MODEL_PATH, 'encoder' + SUFFIX)
+WEIGHTS_DECODER = os.path.join(SEG_NET_PATH, MODEL_PATH, 'decoder' + SUFFIX)
 builder = ModelBuilder()
 net_encoder = builder.build_encoder(arch=ARCH_ENCODER, fc_dim=FC_DIM, weights=WEIGHTS_ENCODER)
 net_decoder = builder.build_decoder(arch=ARCH_DECODER, fc_dim=FC_DIM, num_class=NUM_CLASS, weights=WEIGHTS_DECODER, use_softmax = True)
@@ -158,8 +164,7 @@ def getVggFeatures(file_path):
     features = model.predict(tmp)
     return features
 
-def getDc(PATH):
-    segImage = segment_this_img(PATH)
+def getDc(segImage):
     predImage = np.int32(segImage)
     pixs = predImage.size
     dc = {}
@@ -171,21 +176,23 @@ def getDc(PATH):
     return dc
 
 #target : csv file
+# equation1 : before segremapping, calculate similarity Using label propotion
 def getEquation(content_image, target):
     alpha = 1
-    beta = 0.1
-    h = [] 
+    beta = 0
+    # h = [] 
     eq1_list = []
     eq2_list = []
-    contentDc = getDc(content_image)
-    contentVgg = getVggFeatures(content_image)
-    print(target)
-    equation = [0.0, 0.0]
+    # content = cv2.imread(content_image)
+    cont_seg = segment_this_img(content_image)
+    contentDc = getDc(cont_seg)
+    # contentVgg = getVggFeatures(content_image)
     for t in range(target.shape[0]):
-        eq1 = 0.0
-        eq2 = 0.0
-        deno = 0
-        mole = 0
+        filename = target.loc[t, 'file_name']
+        # eq1 = 0.0
+        # eq2 = 0.0
+        # deno = 0
+        # mole = 0
         ##########################
         # eq 1-1 : 기존 equation #
         ##########################
@@ -193,13 +200,13 @@ def getEquation(content_image, target):
         #    d = target.loc[t, str(idx)]
         #    if float(contentDc[idx]) == 0.0:
         #        deno += float(d)
-        #    elif float(d) == 0.0::q
+        #    elif float(d) == 0.0:
         #        deno += float(contentDc[idx])
         #    else:
         #        deno += max(float(contentDc[idx]), float(d))
         #        mole += min(float(contentDc[idx]), float(d))
         #eq1 = float(mole/deno)
-        
+         
         #####################################
         # eq 1-2 : 교수님께서 말씀하신 내용 #
         #####################################
@@ -211,63 +218,130 @@ def getEquation(content_image, target):
         #    else:
         #        deno += max(contentLabel, styleLabel)
         #        mole += min(contentLabel, styleLabel)
-        #
         #eq1 = float(mole/deno)
 
         #####################################################
         # eq 1-3 : 교수님께서 말씀하신 내용 +  maximum prop #
         #####################################################
-        for idx in contentDc.keys():
-            contentLabel = min(float(contentDc[idx]), LABEL_PROP_MAX)
-            styleLabel = min(float(target.loc[t, str(idx)]), LABEL_PROP_MAX)
-            if contentLabel == 0.0:
-                 continue
-            else:
-                deno += max(contentLabel, styleLabel)
-                mole += min(contentLabel, styleLabel)
-        
-        eq1 = float(mole/deno)
+        #for idx in contentDc.keys():
+        #   contentLabel = min(float(contentDc[idx]), LABEL_PROP_MAX)
+        #   styleLabel = min(float(target.loc[t, str(idx)]), LABEL_PROP_MAX)
+        #   if contentLabel == 0.0:
+        #        continue
+        #   else:
+        #       deno += max(contentLabel, styleLabel)
+        #       mole += min(contentLabel, styleLabel)
+        #eq1 = float(mole/deno)
          
         #####################################################
         # eq 1-4 : 생각을 해보니까...                       #
         #####################################################
-        #tmp = 0
-        #for idx in contentDc.keys():
-        #    contentLabel = float(contentDc[idx])
-        #    styleLabel = float(target.loc[t, str(idx)])
-        #    if contentLabel != 0.0 and styleLabel != 0.0:
-        #        tmp += (styleLabel/contentLabel)
-        #eq1_list.append(tmp)
-        eq1_list.append(eq1)
-        content = cv2.imread(content_image)
-        style = cv2.imread(target.loc[t, 'file_name'])
-        if content.shape[0]*content.shape[1] > style.shape[0] * style.shape[1]:
-            style = cv2.resize(style, dsize=(content.shape[1], content.shape[0]), interpolation=cv2.INTER_CUBIC)
-        else:
-            content = cv2.resize(content, dsize = (style.shape[1], style.shape[0]), interpolation=cv2.INTER_CUBIC)
+        tmp = 0
+        for idx in contentDc.keys():
+            contentLabel = float(contentDc[idx])
+            styleLabel = float(target.loc[t, str(idx)])
+            if contentLabel < 0.01:
+                continue
+            else:
+                tmp += (min((styleLabel/contentLabel), 1.0) * contentLabel)
+        # print("filename : ",filename, "equation : ",tmp)
+        eq1_list.append(tmp) 
+        # eq to list
+        #eq1_list.append(eq1)
         
+        # content = cv2.imread(content_image)
+        # style = cv2.imread(filename)
+        # if content.shape[0]*content.shape[1] > style.shape[0] * style.shape[1]:
+        #     style = cv2.resize(style, dsize=(content.shape[1], content.shape[0]), interpolation=cv2.INTER_CUBIC)
+        # else:
+        #     content = cv2.resize(content, dsize = (style.shape[1], style.shape[0]), interpolation=cv2.INTER_CUBIC)
         
         ########################
         # eq 2 : inner product #
         ########################
-        inner = 0
-        for i in range(7):
-            for j in range(7):
-                for k in range(512):
-                    inner += (contentVgg[0][i][j][k] * json_data[target.loc[t, 'file_name']][0][i][j][k])
-        eq2_list.append(inner)
+        # inner = 0
+        # for i in range(7):
+        #     for j in range(7):
+        #         for k in range(512):
+        #             inner += (contentVgg[0][i][j][k] * json_data[target.loc[t, 'file_name']][0][i][j][k])
+        # eq2_list.append(inner)
 
-    eq1_list = MinMaxScaler().fit_transform(np.array(eq1_list).reshape(-1,1))   
-    eq2_list = MinMaxScaler().fit_transform(np.array(eq2_list).reshape(-1,1))
-    print(eq1_list)
+    # eq1_list = MinMaxScaler().fit_transform(np.array(eq1_list).reshape(-1,1))   
+    # eq2_list = MinMaxScaler().fit_transform(np.array(eq2_list).reshape(-1,1))
+    
+    total_eq = []
+    for t in range(target.shape[0]):
+        filename = target.loc[t, 'file_name']
+        # eq = eq1_list[t] + beta * eq2_list[t]
+        total_eq.append(eq1_list[t])
+        # heappush(h, [eq, filename])
+        # if len(h) > NUMBER_OF_RES_IMAGE:
+            # heappop(h)
+    # for i in h:
+        # print(i)
+    return total_eq
+
+# content_image : numpy
+# target : meta file
+def getEq2(content_image, target):
+    # beta = 0
+    eq1_list = []
+    # eq2_list = []
+    # content = cv2.imread(content_image)
+    cont_seg = segment_this_img(content_image)
+    self_cont_seg = segReMapping.self_remapping(cont_seg)
+    contentDc = getDc(cont_seg)
+    # contentVgg = getVggFeatures(content_image)
 
     for t in range(target.shape[0]):
         filename = target.loc[t, 'file_name']
-        eq = eq1_list[t] + beta * eq2_list[t]
-        heappush(h, [eq, filename])
-        if len(h) >= 6:
-            heappop(h)
-    return h 
+        # style = cv2.imread(filename)
+        styl_seg = segment_this_img(filename)
+        self_styl_seg = segReMapping.self_remapping(styl_seg)
+        cross_cont_seg, cross_styl_seg = segReMapping.cross_remapping(self_cont_seg, self_styl_seg)
+        # get propotion
+        cont_new_dc = getDc(cross_cont_seg)
+        styl_new_dc = getDc(cross_styl_seg)
+        tmp = 0
+        for idx in cont_new_dc.keys():
+            contentLabel = float(cont_new_dc[idx])
+            styleLabel = float(styl_new_dc[idx])
+            if contentLabel < 0.01:
+                continue
+            if idx in contentDc:
+                tmp += (min((styleLabel/contentLabel), 1.0) * contentLabel)
+            else:
+                tmp += ((min((styleLabel/contentLabel), 1.0) * contentLabel) * 0.05)
+        # print("filename : ",filename, "equation : ",tmp)
+        eq1_list.append(tmp) 
+
+        ########################
+        # eq 2 : inner product #
+        ########################
+        # inner = 0
+        # for i in range(7):
+        #     for j in range(7):
+        #         for k in range(512):
+        #             inner += (contentVgg[0][i][j][k] * json_data[target.loc[t, 'file_name']][0][i][j][k])
+        # eq2_list.append(inner)
+
+    # eq1_list = MinMaxScaler().fit_transform(np.array(eq1_list).reshape(-1,1))   
+    # eq2_list = MinMaxScaler().fit_transform(np.array(eq2_list).reshape(-1,1))
+    total_eq = []
+    filename_list = []
+    for t in range(target.shape[0]):
+        filename = target.loc[t, 'file_name']
+        # eq = eq1_list[t] + beta * eq2_list[t]
+        filename_list.append(filename)
+        # total_eq.append(eq)
+        total_eq.append(eq1_list[t])
+        # heappush(h, [eq, filename])
+        # if len(h) > NUMBER_OF_RES_IMAGE:
+            # heappop(h)
+    # for i in h:
+        # print(i)
+    return total_eq, filename_list
+
 
 colors = loadmat('./segmentation/data/color150.mat')['colors']
 
@@ -302,10 +376,19 @@ if args.theme:
         content_seg_path = os.path.join(seg_path, f[:-4]+'_seg.png')
         cont_seg = segment_this_img(content_image_path, True)
         cv2.imwrite(content_seg_path, cont_seg)
-        heap = getEquation(content_image_path, meta)
-        top = 5 
-        while heap:
-            cur = heappop(heap)
+        equation_time = time.time()
+        eq1 = getEquation(content_image_path, meta)
+        eq2, file_list = getEq2(content_image_path, meta)
+        print("Equation Time : ", time.time() - equation_time)
+        eq = []
+        for i in range(len(eq2)):
+            print("filename : ", file_list[i], " eq1 : ", eq1[i], " eq2 : ", eq2[i])
+            heappush(eq, [eq1[i] + eq2[i], file_list[i]])
+            if len(eq) > 5:
+                heappop(eq)
+        top = NUMBER_OF_RES_IMAGE
+        while eq:
+            cur = heappop(eq)
             print(top, cur)
             style_image_path = cur[1]
             style_seg_path = os.path.join(seg_path,style_image_path.split('/')[-1].split('.')[-2]+'_seg.png')

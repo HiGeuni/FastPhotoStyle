@@ -14,8 +14,21 @@ import torch.nn as nn
 from smooth_filter import smooth_filter
 from process_stylization import Timer, memory_limit_image_resize
 from scipy.io import loadmat
+import time
 colors = loadmat('segmentation/data/color150.mat')['colors']
 
+def label_index_to_name():
+    with open("ade20k_labels.txt", 'r') as f:
+        data = f.readlines()
+    ls = []
+    for i in data:
+        s = i.split('\t')
+        s[1] = s[1].rstrip().split()
+        ls.append(s[1][0])
+    dc = {}
+    for idx, name in enumerate(ls):
+        dc[idx] = name
+    return dc
 
 def overlay(img, pred_color, blend_factor=0.4):
     import cv2
@@ -45,7 +58,9 @@ class SegReMapping:
         self.label_mapping = np.load(mapping_name)
         self.min_ratio = min_ratio
 
-    def cross_remapping(self, cont_seg, styl_seg):
+    def cross_remapping(self, cont_seg, styl_seg, bprint=False):
+        if bprint:
+            print("### Cross Remapping !!")
         cont_label_info = []
         new_cont_label_info = []
         for label in np.unique(cont_seg):
@@ -68,10 +83,28 @@ class SegReMapping:
                 if new_label in style_label_info:
                     new_cont_label_info[cont_label_index] = new_label
                     break
-        print("Content Label", cont_label_info_before, "->", new_cont_label_info)
+
+        dc = label_index_to_name()
+        if bprint:
+            print("***** Content Label Change *****")
+            for i in range(len(cont_label_info_before)):
+                print(dc[cont_label_info_before[i]], " -> ", dc[new_cont_label_info[i]])
+
         new_cont_seg = cont_seg.copy()
         for i,current_label in enumerate(cont_label_info):
             new_cont_seg[(cont_seg == current_label)] = new_cont_label_info[i]
+
+        n_pixels = new_cont_seg.shape[0] * new_cont_seg.shape[1]
+        if bprint:
+            for i in new_cont_label_info:
+                print(dc[i], end = ', ')
+            print()
+
+        new_cont_ratio_info = []
+        for label in new_cont_label_info:
+            new_cont_ratio_info.append(np.sum(np.float32((new_cont_seg == label))[:])/n_pixels)
+        if bprint:
+            print(new_cont_ratio_info)
 
         cont_label_info = []
         for label in np.unique(new_cont_seg):
@@ -89,11 +122,29 @@ class SegReMapping:
         for i,current_label in enumerate(style_label_info):
             # print("%d -> %d" %(current_label,new_style_label_info[i]))
             new_styl_seg[(styl_seg == current_label)] = new_style_label_info[i]
-        
-        print("Style label", style_label_info_before, "->", new_style_label_info)
+
+        if bprint:
+            print("***** Style Label Change *****")
+            for i in range(len(style_label_info_before)):
+                print(dc[style_label_info_before[i]], " -> ", dc[new_style_label_info[i]])
+
+        n_pixels = new_styl_seg.shape[0] * new_styl_seg.shape[1]
+
+        if bprint:
+            for i in new_style_label_info:
+                print(dc[i], end = ', ')
+            print()
+
+        new_style_ratio_info = []
+        for label in new_style_label_info:
+            new_style_ratio_info.append(np.sum(np.float32((new_styl_seg == label))[:])/n_pixels)
+        if bprint:
+            print(new_style_ratio_info)
         return new_cont_seg, new_styl_seg
 
-    def self_remapping(self, seg):
+    def self_remapping(self, seg, bprint = False):
+        if bprint:
+            print("### Self Remapping !! ###")
         init_ratio = self.min_ratio
         # Assign label with small portions to label with large portion
         new_seg = seg.copy()
@@ -116,10 +167,27 @@ class SegReMapping:
                         index = label_info.index(new_label)
                         if index >= 0:
                             if ratio_info[index] >= init_ratio:
+                                ratio_info[index] += ratio_info[i]
+                                ratio_info[i] = 0
                                 new_label_info[i] = new_label
                                 break
         for i,current_label in enumerate(label_info):
             new_seg[(seg == current_label)] = new_label_info[i]
+        idx = 0
+        while idx < len(new_label_info):
+            if ratio_info[idx] == 0:
+                del new_label_info[idx]
+                del ratio_info[idx]
+            else:
+                idx += 1
+        dc = label_index_to_name()
+        if bprint:
+            print("new Label info : ", end = ' ')
+            for i in new_label_info:
+                print(dc[i], end = ', ')
+            print()
+            print("new Ratio info : ", ratio_info)
+        
         return new_seg
 
 
@@ -128,6 +196,7 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
                 cuda, save_intermediate, no_post, label_remapping, output_visualization=False):
     # Load image
     with torch.no_grad():
+        st = time.time()
         cont_img = Image.open(content_image_path).convert('RGB')
         styl_img = Image.open(style_image_path).convert('RGB')
 
@@ -161,9 +230,9 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
         cont_seg = np.asarray(cont_seg)
         styl_seg = np.asarray(styl_seg)
 
-        cont_seg = label_remapping.self_remapping(cont_seg)
-        styl_seg = label_remapping.self_remapping(styl_seg)
-        cont_seg, styl_seg = label_remapping.cross_remapping(cont_seg, styl_seg)
+        cont_seg = label_remapping.self_remapping(cont_seg, True)
+        styl_seg = label_remapping.self_remapping(styl_seg, True)
+        cont_seg, styl_seg = label_remapping.cross_remapping(cont_seg, styl_seg, True)
 
         if output_visualization:
             import cv2
@@ -212,5 +281,7 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
                     out_img = smooth_filter(out_img, cont_pilimg, f_radius=15, f_edge=1e-1)
             out_img.convert('P')
             out_img.save(output_image_path)
+        endTime = time.time()
+        print("Time : ", endTime - st)
     return
 

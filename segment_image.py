@@ -12,12 +12,14 @@ from segmentation.models import ModelBuilder, SegmentationModule
 from segmentation.dataset import round2nearest_multiple
 from segmentation.mit_semseg.lib.nn import user_scattered_collate, async_copy_to
 from segmentation.mit_semseg.lib.utils import as_numpy, mark_volatile
+from scipy.io import loadmat
 
 # parameter
 parser = argparse.ArgumentParser(description='Photorealistic Image Stylization')
 parser.add_argument('--dir', default = False)
 args = parser.parse_args()
 
+colors = loadmat('segmentation/data/color150.mat')['colors']
 
 SEG_NET_PATH = 'segmentation'
 MODEL_PATH = 'ckpt/ade20k-hrnetv2-c1'
@@ -47,6 +49,14 @@ segmentation_module.cuda()
 segmentation_module.eval()
 
 transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])])
+
+def visualize_result(label_map):
+    label_map = label_map.astype('int')
+    label_map_rgb = np.zeros((label_map.shape[0], label_map.shape[1], 3), dtype=np.uint8)
+    for label in np.unique(label_map):
+        label_map_rgb += (label_map == label)[:, :, np.newaxis] * \
+            np.tile(colors[label],(label_map.shape[0], label_map.shape[1], 1))
+    return label_map_rgb
 
 def segment_this_img(f, flag=False):
     img = cv2.imread(f)    
@@ -95,3 +105,5 @@ if __name__ == "__main__":
     for i in pat:
         seg_img = segment_this_img(i)
         cv2.imwrite(i[:-4] +"_seg.png", seg_img)
+        seg_img = visualize_result(seg_img)
+        cv2.imwrite(i[:-4] +"_seg_visualize.png", seg_img)

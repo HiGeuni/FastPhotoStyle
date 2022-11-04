@@ -1,24 +1,21 @@
 import os
-from photo_gif import GIFSmoothing
+import cv2
 import csv
+import numpy as np
+import pandas as pd
 import torch
 from torch import nn
-
-import process_stylization_ade20k_ssn
+from torchvision import transforms
+from scipy.io import loadmat
+from heapq import heappush, heappop
 
 from segmentation.models import ModelBuilder, SegmentationModule
 from segmentation.dataset import round2nearest_multiple
 from segmentation.mit_semseg.lib.nn import async_copy_to
 from segmentation.mit_semseg.lib.utils import as_numpy
+import process_stylization_ade20k_ssn
+from photo_gif import GIFSmoothing
 from photo_wct import PhotoWCT
-from torchvision import transforms
-import numpy as np
-from scipy.io import loadmat
-import csv
-import pandas as pd
-from skimage.metrics import structural_similarity as ssim
-from heapq import heappush, heappop
-import cv2
 
 #define segmentation module
 SEG_NET_PATH = 'segmentation'

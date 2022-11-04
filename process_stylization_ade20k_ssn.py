@@ -143,8 +143,6 @@ class SegReMapping:
         return new_cont_seg, new_styl_seg
 
     def self_remapping(self, seg, bprint = False):
-        if bprint:
-            print("### Self Remapping !! ###")
         init_ratio = self.min_ratio
         # Assign label with small portions to label with large portion
         new_seg = seg.copy()
@@ -207,6 +205,8 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
         cw = cont_pilimg.width
         ch = cont_pilimg.height
         try:
+            print(content_seg_path)
+            print(style_seg_path)
             cont_seg = Image.open(content_seg_path)
             styl_seg = Image.open(style_seg_path)
             cont_seg.resize((new_cw, new_ch), Image.NEAREST)
@@ -229,7 +229,6 @@ def stylization(stylization_module, smoothing_module, content_image_path, style_
 
         cont_seg = np.asarray(cont_seg)
         styl_seg = np.asarray(styl_seg)
-
         cont_seg = label_remapping.self_remapping(cont_seg, True)
         styl_seg = label_remapping.self_remapping(styl_seg, True)
         cont_seg, styl_seg = label_remapping.cross_remapping(cont_seg, styl_seg, True)

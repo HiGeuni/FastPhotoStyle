@@ -2,7 +2,7 @@ import cv2
 import glob
 import argparse
 
-RESTRICT =960 
+RESTRICT = 720 
 
 def resizeImage(imagePath):
 	

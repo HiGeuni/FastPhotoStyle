@@ -1,7 +1,14 @@
+############################################################################################
+# this script performs image semantic segmentation on the specific directory using hrnetv2 #
+# usage : python segment_image.py --dir <image dir>                                        #
+# If image size is too large, Cause out of memory                                          #
+# The Generated result are stored in same folder with name format : OOO_seg.png            #
+############################################################################################
 import os
 import glob
 import cv2
 import numpy as np
+from PIL import Image
 
 import torch
 from torch import nn
@@ -12,6 +19,7 @@ from segmentation.models import ModelBuilder, SegmentationModule
 from segmentation.dataset import round2nearest_multiple
 from segmentation.mit_semseg.lib.nn import user_scattered_collate, async_copy_to
 from segmentation.mit_semseg.lib.utils import as_numpy, mark_volatile
+from segmentation.mit_semseg.utils import unique, colorEncode
 from scipy.io import loadmat
 
 # parameter
@@ -49,6 +57,8 @@ segmentation_module.cuda()
 segmentation_module.eval()
 
 transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])])
+
+colors = loadmat('./segmentation/data/color150.mat')['colors']
 
 def visualize_result(label_map):
     label_map = label_map.astype('int')
@@ -104,6 +114,7 @@ if __name__ == "__main__":
     pat = glob.glob(args.dir+"/*")
     for i in pat:
         seg_img = segment_this_img(i)
-        cv2.imwrite(i[:-4] +"_seg.png", seg_img)
-        seg_img = visualize_result(seg_img)
-        cv2.imwrite(i[:-4] +"_seg_visualize.png", seg_img)
+        pred_color = colorEncode(np.int32(seg_img), colors).astype(np.uint8)
+        # seg_img_visualized = visualize_result(seg_img[:, :, ::-1])
+        print(i.split(".")[0] +"_seg_visualize.png")
+        Image.fromarray(pred_color).save(i.split(".")[0] +"_seg.png")

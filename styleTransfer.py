@@ -235,9 +235,6 @@ if __name__ == "__main__":
     if args.cuda:
         p_wct.cuda(0)
 
-
-
-
     # SELECT STYLE IMAGE(BY EQUATION)
     # ExtractLabel -> extractImage : Dictionary 불러오기
     # up-style_transfer2-getEquation -> style이미지 찾기

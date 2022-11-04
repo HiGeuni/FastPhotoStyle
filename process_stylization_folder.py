@@ -1,6 +1,8 @@
 """
 Copyright (C) 2018 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
+
+use : python process_stylization_folder.py --content_image=<content_path> --style_image=<style_path> --fast
 """
 from __future__ import print_function
 import argparse
@@ -49,15 +51,15 @@ parser.add_argument('--content_image', help="content folder Path")
 parser.add_argument('--style_image', help="style folder Path")
 parser.add_argument('--cont_img_ext', type=str, default='.png')
 parser.add_argument('--styl_img_ext', type=str, default='.png')
-parser.add_argument('--theme', help = "clear, autumn, cloudy, snowy, sunset, summer, night", default = False)
+parser.add_argument('--theme', help = "clear, autumn, cloudy, snowy, sunset, night", default = False)
 args = parser.parse_args()
 
 folder = args.folder
 
 CSV_PATH = './theme.csv'
-JSON_PATH = './data.json'
-f = open(JSON_PATH, encoding='UTF-8')
-json_data = json.loads(f.read())
+# JSON_PATH = './data.json'
+# f = open(JSON_PATH, encoding='UTF-8')
+# json_data = json.loads(f.read())
 
 cont_img_folder = args.content_image
 cont_img_list = [f for f in os.listdir(cont_img_folder) if os.path.isfile(os.path.join(cont_img_folder, f))]
@@ -84,9 +86,6 @@ SEQM_DOWNSAMPLING_RATE = 4
 GPU_ID = 0
 LABEL_PROP_MAX = 0.1
 NUMBER_OF_RES_IMAGE = 5 
-
-model = VGG19(weights='imagenet')
-model = Model(inputs = model.input, outputs=model.get_layer('block5_pool').output)
         
 segReMapping = process_stylization_ade20k_ssn.SegReMapping('ade20k_semantic_rel.npy')
 
@@ -103,6 +102,9 @@ segmentation_module.eval()
 transform = transforms.Compose([transforms.Normalize(mean=[0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])])
 
 # Load model
+model = VGG19(weights='imagenet')
+model = Model(inputs = model.input, outputs=model.get_layer('block5_pool').output)
+
 p_wct = PhotoWCT()
 p_wct.load_state_dict(torch.load(args.model))
 
@@ -156,13 +158,13 @@ def segment_this_img(f, flag=False):
         preds = as_numpy(preds.squeeze(0).cpu())
     return preds
 
-def getVggFeatures(file_path):
-    img = load_img(file_path, target_size = (224, 224))
-    img = img_to_array(img)
-    tmp = np.expand_dims(img, axis=0)
-    tmp = preprocess_input(tmp)
-    features = model.predict(tmp)
-    return features
+# def getVggFeatures(file_path):
+#     img = load_img(file_path, target_size = (224, 224))
+#     img = img_to_array(img)
+#     tmp = np.expand_dims(img, axis=0)
+#     tmp = preprocess_input(tmp)
+#     features = model.predict(tmp)
+#     return features
 
 def getDc(segImage):
     predImage = np.int32(segImage)
@@ -270,16 +272,18 @@ def getEquation(content_image, target):
     # eq2_list = MinMaxScaler().fit_transform(np.array(eq2_list).reshape(-1,1))
     
     total_eq = []
+    filename_list = []
     for t in range(target.shape[0]):
         filename = target.loc[t, 'file_name']
         # eq = eq1_list[t] + beta * eq2_list[t]
         total_eq.append(eq1_list[t])
+        filename_list.append(filename)
         # heappush(h, [eq, filename])
         # if len(h) > NUMBER_OF_RES_IMAGE:
             # heappop(h)
     # for i in h:
         # print(i)
-    return total_eq
+    return total_eq, filename_list
 
 # content_image : numpy
 # target : meta file
@@ -358,6 +362,7 @@ if args.theme:
     meta = meta.reset_index()
     for f in cont_img_list:
         outp_img_path = './results/'+f[:-4]+'_'+args.theme
+        
         if not os.path.exists(outp_img_path):
             os.makedirs(outp_img_path)
         if not os.path.exists(os.path.join(outp_img_path, 'segmentation')):
@@ -377,15 +382,29 @@ if args.theme:
         cont_seg = segment_this_img(content_image_path, True)
         cv2.imwrite(content_seg_path, cont_seg)
         equation_time = time.time()
-        eq1 = getEquation(content_image_path, meta)
-        eq2, file_list = getEq2(content_image_path, meta)
+        eq1, file_list = getEquation(content_image_path, meta)
+        # eq2, file_list = getEq2(content_image_path, meta)
         print("Equation Time : ", time.time() - equation_time)
+        # eq = []
+        # for i in range(len(eq2)):
+        #     print("filename : ", file_list[i], " eq1 : ", eq1[i], " eq2 : ", eq2[i])
+        #     heappush(eq, [eq1[i] + eq2[i], file_list[i]])
+        #     if len(eq) > 5:
+        #         heappop(eq)
+        # eq = []
+        # for i in range(len(eq2)):
+        #     print("filename : ", file_list[i], "eq2 : ", eq2[i])
+        #     heappush(eq, [eq2[i], file_list[i]])
+        #     if len(eq) > 5:
+        #         heappop(eq)
         eq = []
-        for i in range(len(eq2)):
-            print("filename : ", file_list[i], " eq1 : ", eq1[i], " eq2 : ", eq2[i])
-            heappush(eq, [eq1[i] + eq2[i], file_list[i]])
+        for i in range(len(eq1)):
+            print("filename : ", file_list[i], "eq1 : ", eq1[i])
+            heappush(eq, [eq1[i], file_list[i]])
             if len(eq) > 5:
                 heappop(eq)
+        
+        
         top = NUMBER_OF_RES_IMAGE
         while eq:
             cur = heappop(eq)
@@ -413,14 +432,14 @@ if args.theme:
                 label_remapping=segReMapping,
                 output_visualization=False
             )
-            pred_color = colorEncode(np.int32(style_seg), colors).astype(np.uint8)
-            Image.fromarray(pred_color).save(style_seg_path)
-            style_img = cv2.imread(style_image_path)
-            cv2.imwrite(os.path.join(outp_style_path, style_image_path.split('/')[-1]), style_img)
-        pred_color = colorEncode(np.int32(cont_seg), colors).astype(np.uint8)
-        Image.fromarray(pred_color).save(content_seg_path)
-        cont_img = cv2.imread(content_image_path)
-        cv2.imwrite(os.path.join(outp_cont_path, content_image_path.split('/')[-1]), cont_img)
+        #     pred_color = colorEncode(np.int32(style_seg), colors).astype(np.uint8)
+        #     Image.fromarray(pred_color).save(style_seg_path)
+        #     style_img = cv2.imread(style_image_path)
+        #     cv2.imwrite(os.path.join(outp_style_path, style_image_path.split('/')[-1]), style_img)
+        # pred_color = colorEncode(np.int32(cont_seg), colors).astype(np.uint8)
+        # Image.fromarray(pred_color).save(content_seg_path)
+        # cont_img = cv2.imread(content_image_path)
+        # cv2.imwrite(os.path.join(outp_cont_path, content_image_path.split('/')[-1]), cont_img)
 else:
     outp_img_path = './results/'+args.content_image.split('/')[-2]+'_'+args.style_image.split('/')[-2]
     print("###################",outp_img_path)
@@ -450,7 +469,7 @@ else:
             style_seg = segment_this_img(style_image_path, True)
             cv2.imwrite(style_seg_path, style_seg)
             output_image_path = os.path.join(outp_img_path, f[:-4]+'_'+sf[:-4]+'.png')
-            print("output_image_path :"+output_image_path)
+            print("output_image_path :" + output_image_path)
             print("Content image: " + content_image_path )
 
             print("Style image: " + style_image_path )
